@@ -18,7 +18,15 @@ fn size_class_index(size: usize) -> usize {
 }
 
 // 输入请求大小 → 返回对齐后的实际块大小
-fn round_up(size: usize) -> usize {}
+fn round_up(size: usize) -> usize {
+    if size <= SIZE_CLASSES[0] {
+        SIZE_CLASSES[0]
+    } else if size > SIZE_CLASSES[SIZE_CLASSES.len() - 1] {
+        size
+    } else {
+        next_power_of_two(size)
+    }
+}
 
 const fn next_power_of_two(mut size: usize) -> usize {
     if size == 0 {
