@@ -89,6 +89,12 @@ impl ClassPool {
     }
 }
 
+impl Default for Pool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Pool {
     pub fn new() -> Self {
         let classes = SIZE_CLASSES.map(ClassPool::new).into();

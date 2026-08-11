@@ -68,6 +68,8 @@ pub fn max_class_size() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
     fn size_class_maps_to_first_fitting_slot() {
         assert_eq!(size_class_index(0), 0);
         assert_eq!(size_class_index(1), 0);
