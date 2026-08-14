@@ -109,6 +109,10 @@ impl Pool {
         if size == 0 || size > util::max_class_size() {
             return ptr::null_mut();
         }
+        // align 必须是 2 的幂（与 `Layout` 的要求一致）；0 或 12 这类值无法表达合法对齐
+        if !align.is_power_of_two() {
+            return ptr::null_mut();
+        }
         let class = &mut self.classes[util::size_class_index(size)];
         if align > class.slot_size {
             return ptr::null_mut();
@@ -182,6 +186,46 @@ mod tests {
     }
 
     #[test]
+    fn allocations_spanning_multiple_chunks() {
+        let mut pool = Pool::new();
+        const SLOT: usize = 32;
+        let slots_per_chunk = CHUNK_BYTES / SLOT; // 512
+        // 超过两个 chunk 的容量，强制多次 grow，覆盖跨 chunk 的槽号换算与 find_slot 扫描
+        let total = slots_per_chunk * 2 + slots_per_chunk / 2;
+
+        // 1) 全部非空、对齐、互不重叠
+        let ptrs: Vec<usize> = (0..total).map(|_| pool.alloc(SLOT, SLOT) as usize).collect();
+        assert!(ptrs.iter().all(|&p| p != 0));
+        assert!(ptrs.iter().all(|&p| p % SLOT == 0));
+        let mut sorted = ptrs.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), total, "跨 chunk 的槽不能出现别名/重叠");
+
+        // 2) 同一 chunk 内相邻槽地址连续（直接验证 slot_addr 的除法/取模换算）
+        //    首次分配按全局槽号 0,1,2,… 递增弹出，故第 i 与 i+1 个分配即全局槽 i、i+1。
+        for (i, w) in ptrs.windows(2).enumerate() {
+            if (i + 1) % slots_per_chunk != 0 {
+                assert_eq!(w[1] - w[0], SLOT, "同一 chunk 内的槽 {i} 与 {i}+1 应连续");
+            }
+        }
+
+        // 3) 全部归还：跨 chunk 的 find_slot 必须全部命中（否则 free_count 会小于 total）
+        for &p in &ptrs {
+            unsafe { pool.dealloc(p as *mut u8, SLOT, SLOT) };
+        }
+        assert_eq!(pool.stats.free_count, total);
+        assert_eq!(pool.stats.current_live, 0);
+
+        // 4) 复用：归还的跨 chunk 槽被重新拿到，地址集合完全一致
+        let again: Vec<usize> = (0..total).map(|_| pool.alloc(SLOT, SLOT) as usize).collect();
+        let (mut a, mut b) = (ptrs.clone(), again.clone());
+        a.sort_unstable();
+        b.sort_unstable();
+        assert_eq!(a, b, "跨 chunk 归还的格子应被复用");
+    }
+
+    #[test]
     fn data_integrity_roundtrip() {
         let mut pool = Pool::new();
         let p = pool.alloc(8, 8) as *mut u64;
@@ -198,6 +242,9 @@ mod tests {
         assert!(pool.alloc(0, 8).is_null());
         assert!(pool.alloc(util::max_class_size() + 1, 8).is_null()); // 超最大档
         assert!(pool.alloc(16, 32).is_null()); // align > slot_size
+        assert!(pool.alloc(16, 0).is_null()); // align 不能是 0
+        assert!(pool.alloc(16, 12).is_null()); // align 必须是 2 的幂
+        assert!(!pool.alloc(16, 1).is_null()); // align = 1（2^0）是合法的最小对齐
     }
 
     #[test]

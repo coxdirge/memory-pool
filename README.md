@@ -25,7 +25,7 @@ An educational memory-pool (slab allocator) project built from scratch, followin
 ```bash
 cargo build    # 构建 / build
 cargo run      # 运行演示程序 / run the demo
-cargo test     # 运行 11 个单元测试 / run the 11 unit tests
+cargo test     # 运行 12 个单元测试 / run the 12 unit tests
 ```
 
 `cargo run` 的演示流程：分配 4 个 8 字节槽 → 写入 → 全部归还 → 再分配 1 个（验证复用）→ 打印统计。输出示例（地址每次运行不同）：
@@ -62,7 +62,7 @@ memory-pool/
 
 ```
 alloc(size, align)
-  → 拒绝 size==0 / size > 8192 / align > slot_size
+  → 拒绝 size==0 / size > 8192 / align 非 2 的幂 / align > slot_size
   → size_class_index(size) 定位档位 ClassPool
   → FreeList.pop() 弹空闲槽索引
   → 空闲列表为空则 grow()：申请新 16KB Chunk，push_range 全部槽索引
@@ -76,17 +76,17 @@ alloc(size, align)
 | 方法 / Method | 签名 / Signature | 说明 / Notes |
 | --- | --- | --- |
 | `Pool::new` | `() -> Pool` | 创建池（也实现 `Default`） |
-| `Pool::alloc` | `(&mut self, size: usize, align: usize) -> *mut u8` | 拒绝 `size == 0`、`size > 8192`、`align > slot_size`，失败返回 `null` |
+| `Pool::alloc` | `(&mut self, size: usize, align: usize) -> *mut u8` | 拒绝 `size == 0`、`size > 8192`、`align` 非 2 的幂、`align > slot_size`，失败返回 `null` |
 | `Pool::dealloc` | `unsafe fn (&mut self, ptr: *mut u8, size: usize, align: usize)` | `size` 必须与 `alloc` 时一致；非法参数静默忽略 |
 | `Pool::stats` | `pub PoolStats` | `alloc_count / free_count / current_live / peak_live` |
 
 ## 测试 / Tests
 
-11 个内联单元测试（`#[cfg(test)]`，无 `tests/` 目录）：
+12 个内联单元测试（`#[cfg(test)]`，无 `tests/` 目录）：
 
 | 模块 | 数量 | 覆盖内容 |
 | --- | --- | --- |
-| `pool.rs` | 6 | 分配/复用/统计等 |
+| `pool.rs` | 7 | 分配/复用/统计/跨 chunk/对齐校验 |
 | `freelist.rs` | 3 | pop / push / push_range |
 | `util.rs` | 2 | size class 换算 |
 
